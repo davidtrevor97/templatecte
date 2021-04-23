@@ -1,3 +1,29 @@
+<?php
+//include('include/dbcommon.php');
+//$record = db_fetch_array(CustomQuery('SELECT * FROM comm.plank_listini_ee WHERE id='.$_GET['id'].';'));
+//$res = producilistini($record);
+
+function producilistini($record,$utility)
+{
+    //Produce listino pdf per un record di plank_listini_
+
+    $datainiziofix = date('Y-m-01', strtotime($record['datafinefornitura'] . ' - 11 month'));
+    setlocale(LC_TIME, 'it_IT');
+    $azienda = db_fetch_array(CustomQuery('SELECT * FROM comm.plank_aziende WHERE particellaazienda="' . $record['particellaazienda'] . '";'));
+	if(strcmp($utility,'EE')==0){
+		$prezzi = db_fetch_array(CustomQuery("select MIN(data) as inizio,MAX(data) as fine,ROUND(avg(pun)/1000,4) as ultimoanno ,
+			ROUND(avg(if(data >= DATE_FORMAT(DATE_SUB('" . $record['datainiziocompetenza'] . "',INTERVAL 1 MONTH),'%Y-%m%-01') and data <= LAST_DAY(DATE_SUB('" . $record['datainiziocompetenza'] . "',INTERVAL 1 MONTH)),pun,null))/1000,4) as ultimomese 
+			FROM comm.plank_ee_prezzi_mgp 
+			WHERE data >= DATE_FORMAT(DATE_SUB('" . $record['datainiziocompetenza'] . "',INTERVAL 12 MONTH),'%Y-%m%-01') and data <= LAST_DAY(DATE_SUB('" . $record['datainiziocompetenza'] . "',INTERVAL 1 MONTH))"));
+	}
+    ob_start();
+?>
+
+<?php
+   if (strcmp($utility,'EE')==0){
+          switch (strtoupper($record['template_pdf'])) {
+          case 'FISSO PER TE EE':
+       ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -167,7 +193,7 @@
                         <p class="smallP"> 8.00 – 19.00 dal Lunedi al Venerdi</p>
                       </th>
                        <td>
-                          <p class="bigP bold blue"> 0,0610 €/kWh</p>
+                          <p class="bigP bold blue">  <?= number_format($record['c_f1'] / 1000, 3, ',', '.') ?> €/kWh</p>
                         </td>
                      </tr>
                      <tr>
@@ -176,7 +202,7 @@
                             <p class="smallP">7.00-8.00 e 19.00-23.00 giorni lavorativi <br> 7.00 – 23.00 Sabato</p>
                        </th>
                        <td>
-                          <p class="bigP bold blue">0,0610 €/kWh</p> 
+                          <p class="bigP bold blue"> <?= number_format($record['c_f2'] / 1000, 3, ',', '.') ?> €/kWh</p> 
                         </td>
                      </tr>
                      <tr>
@@ -185,7 +211,7 @@
                         <p class="smallP"> 23.00 – 7.00 giorni lavorativi, Domenica e  festivi</p>
                        </th>
                        <td>
-                          <p class="bigP bold blue"> 0,0500 €/kWh</p>
+                          <p class="bigP bold blue"> <?= number_format($record['c_f3'] / 1000, 3, ',', '.') ?> €/kWh</p>
                         </td>
                      </tr>
                    </tbody></table>
@@ -234,3 +260,33 @@
     
 </body>
 </html>
+<?php
+    $html = ob_get_clean();
+
+    //Uso wkhtmltopdf
+    $outfileusr = 'Listino_' . preg_replace('/[^A-Za-z0-9\-]/', '', $record['codiceofferta']);;
+    $outfile = $outfileusr . '_' . date('YmdHis') . rand(10000, 99999);
+    $pathoutfile = '.\\producilistini\\generati\\' . $outfile . '.pdf';
+    $pathinfile = $outfile . '.html';
+    file_put_contents($pathinfile, $html);
+    exec('"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe" ' . $pathinfile . ' ' . $pathoutfile);
+    unlink($pathinfile);
+
+
+    //Da fare
+
+    //Se ho successo...
+    if (file_exists($pathoutfile)) {
+        //Scrivo l'allegato
+        $allegato = '[{"name":"producilistini\\\\/generati\\\\/' . $outfile . '.pdf","usrName":"' . $outfileusr . '.pdf","size":' . filesize($pathoutfile) .
+            ',"type":"application/pdf","searchStr":"' . $outfileusr . '.pdf,!:sStrEnd"}]';
+        //Metto lo stato GENERATA su Comunicazioni
+        $sql = 'UPDATE comm.plank_listini_'.strtolower($utility).' SET allegatocte=\'' . $allegato . '\'  WHERE id=' . $record['id'];
+        CustomQuery($sql);
+        $res = "OK";
+    } else {
+        $res = 'KO';
+    }
+
+    return $res;
+}

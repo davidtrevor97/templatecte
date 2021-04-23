@@ -20,7 +20,7 @@ function producilistini($record,$utility)
 ?>
 
       <?php
-	if (strcmp($utility,'EE')==0){
+	if (strcmp($utility,'GAS')==0){
       switch (strtoupper($record['template_pdf'])) {
           case 'CASAGREEN PSV':
       ?>
